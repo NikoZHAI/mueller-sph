@@ -1,14 +1,14 @@
 #######################################################################################################
 
 # Mac OS X
-SPH_INCLUDE_PATH      = -I/usr/local/include/
-SPH_LIBRARY_PATH      = -L/usr/local/lib/
-SPH_OPENGL_LIBS       = -framework OpenGL -framework GLUT
+# SPH_INCLUDE_PATH      = -I/usr/local/include/
+# SPH_LIBRARY_PATH      = -L/usr/local/lib/
+# SPH_OPENGL_LIBS       = -framework OpenGL -framework GLUT
 
-# # Linux
-# SPH_INCLUDE_PATH      =
-# SPH_LIBRARY_PATH      =
-# SPH_OPENGL_LIBS       = -lglut -lGL -lX11
+# Linux
+SPH_INCLUDE_PATH      =
+SPH_LIBRARY_PATH      =
+SPH_OPENGL_LIBS       = -lglut -lGL -lX11
 
 # # Windows / Cygwin
 # SPH_INCLUDE_PATH      = -I/usr/include/opengl
@@ -20,8 +20,15 @@ SPH_OPENGL_LIBS       = -framework OpenGL -framework GLUT
 TARGET = sph
 CC = g++
 LD = g++
-CFLAGS = -std=c++11 -O3 -Wall -Wno-deprecated -pedantic -Wno-vla-extension $(SPH_INCLUDE_PATH) -I./include -I./src -DNDEBUG
-LFLAGS = -std=c++11 -O3 -Wall -Wno-deprecated -Werror -pedantic $(SPH_LIBRARY_PATH) -DNDEBUG
+# CFLAGS = -std=c++11 -O3 -Wall -Wno-deprecated -pedantic -Wno-vla-extension $(SPH_INCLUDE_PATH) -I./include -I./src -DNDEBUG
+# LFLAGS = -std=c++11 -O3 -Wall -Wno-deprecated -Werror -pedantic $(SPH_LIBRARY_PATH) -DNDEBUG
+
+CFLAGS = -std=gnu++17 -O3 -Wall -Wno-deprecated -pedantic -Wno-vla-extension $(SPH_INCLUDE_PATH) -I./include -I./src -DNDEBUG
+LFLAGS = -std=gnu++17 -O3 -Wall -Wno-deprecated -Werror -pedantic $(SPH_LIBRARY_PATH) -DNDEBUG
+
+# CFLAGS = -std=gnu++17 -Og -g -Wall -Wno-deprecated -pedantic -Wno-vla-extension $(SPH_INCLUDE_PATH) -I./include -I./src -D_DEBUG
+# LFLAGS = -std=gnu++17 -Og -g -Wall -Wno-deprecated -Werror -pedantic $(SPH_LIBRARY_PATH) -D_DEBUG
+
 LIBS = $(SPH_OPENGL_LIBS)
 
 OBJS = obj/main.o
