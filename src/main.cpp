@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <algorithm>
+#include <iomanip>
 #include <iostream>
 #include <vector>
 #include <thread>
@@ -60,9 +61,9 @@ struct Particle
 static vector<Particle> particles;
 
 // interaction
-const static int MAX_PARTICLES = 10500;
-const static int DAM_PARTICLES = 500;
-const static int BLOCK_PARTICLES = 1000;
+const static int MAX_PARTICLES = 105000;
+const static int DAM_PARTICLES = 5000;
+const static int BLOCK_PARTICLES = 5000;
 
 // rendering projection parameters
 const static int WINDOW_WIDTH = 800;
@@ -75,6 +76,11 @@ static std::mutex log_mutex;
 #define log_info(arg) do { \
 	std::unique_lock<std::mutex> local(log_mutex); \
 	std::cout << arg << std::endl; \
+} while(0)
+
+#define log_info_rewind(arg) do { \
+	std::unique_lock<std::mutex> local(log_mutex); \
+	std::cout << arg << std::flush; \
 } while(0)
 
 static constexpr auto red_start("\033[0;31m");
@@ -228,7 +234,7 @@ static unsigned nproc = std::thread::hardware_concurrency();
 static std::mutex wakeMtx;
 static std::condition_variable wakeCv;
 static bool stopped;
-static ThreadSafeRingBuffer<JobDescriptor*, 16> jobs;
+static ThreadSafeRingBuffer<JobDescriptor*, 256> jobs;
 static std::atomic_ulong sem;
 static std::atomic_int threadCount;
 static std::vector<JobDescriptor> descs;
@@ -286,7 +292,8 @@ static void mpDeinit()
 
 static void enqueue(JobDescriptor *job)
 {
-	jobs.push_back(job);
+	while (!jobs.push_back(job))
+		log_warn("worker queue full!");
 	++sem;
 	wakeCv.notify_one();
 }
@@ -470,12 +477,15 @@ void InitGL(void)
 {
 	glClearColor(0.9f, 0.9f, 0.9f, 1);
 	glEnable(GL_POINT_SMOOTH);
-	glPointSize(H / 2.f);
+	glPointSize(H / 8.f);
 	glMatrixMode(GL_PROJECTION);
 }
 
 void Render(void)
 {
+	static unsigned frame;
+	static int t0, t1;
+
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glLoadIdentity();
@@ -490,6 +500,15 @@ void Render(void)
 	glEnd();
 
 	glutSwapBuffers();
+
+	frame++;
+	t1 = glutGet(GLUT_ELAPSED_TIME);
+
+	if (t1 - t0 > 1000) {
+		log_info_rewind(frame * 1000U / (t1 - t0) << " fps" << '\r');
+	 	t0 = t1;
+		frame = 0;
+	}
 }
 
 void Keyboard(unsigned char c, __attribute__((unused)) int x, __attribute__((unused)) int y)
