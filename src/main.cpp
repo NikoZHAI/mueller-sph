@@ -44,6 +44,18 @@ const static float VISC_LAP = 40.f / (M_PI * pow(H, 5.f));
 const static float EPS = H; // boundary epsilon
 const static float BOUND_DAMPING = -0.5f;
 
+struct Stats
+{
+	unsigned int render_ms = 0;				// render milliseconds
+	unsigned int update_ms = 0;				// update milliseconds
+	unsigned int collisions_density = 0;
+	unsigned int collisions_force = 0;
+	unsigned int match_density = 0;
+	unsigned int match_force = 0;
+
+	void clear() { collisions_force = collisions_density = match_density = match_force = 0;}
+} stats;
+
 // particle data structure
 // stores position, velocity, and force for integration
 // stores density (rho) and pressure values for SPH
@@ -80,7 +92,7 @@ static std::mutex log_mutex;
 
 #define log_info_rewind(arg) do { \
 	std::unique_lock<std::mutex> local(log_mutex); \
-	std::cout << arg << std::flush; \
+	std::cout << arg << '\r' << std::flush; \
 } while(0)
 
 static constexpr auto red_start("\033[0;31m");
@@ -383,6 +395,7 @@ void ComputeDensityPressureWorker(const JobDescriptor *job)
 		auto lower = std::lower_bound(particles.begin(), particles.end(), tmp);
 		tmp.x = pi.x + Vector2f(H, 0);
 		auto upper = std::upper_bound(particles.begin(), particles.end(), tmp);
+		// stats.match_density += std::distance(lower, upper);
 
 		for (auto jit = lower; jit != upper; ++jit)
 		{
@@ -394,6 +407,7 @@ void ComputeDensityPressureWorker(const JobDescriptor *job)
 			{
 				// this computation is symmetric
 				pi.rho += MASS * POLY6 * pow(HSQ - r2, 3.f);
+				// ++stats.collisions_density;
 			}
 		}
 		pi.p = GAS_CONST * (pi.rho - REST_DENS);
@@ -416,6 +430,7 @@ void ComputeForcesWorker(const JobDescriptor *job)
 		auto lower = std::lower_bound(particles.begin(), particles.end(), tmp);
 		tmp.x = pi.x + Vector2f(H, 0);
 		auto upper = std::upper_bound(particles.begin(), particles.end(), tmp);
+		// stats.match_force += std::distance(lower, upper);
 
 		for (auto jit = lower; jit != upper; ++jit)
 		{
@@ -434,6 +449,8 @@ void ComputeForcesWorker(const JobDescriptor *job)
 				fpress += -rij.normalized() * MASS * (pi.p + pj.p) / (2.f * pj.rho) * SPIKY_GRAD * pow(H - r, 3.f);
 				// compute viscosity force contribution
 				fvisc += VISC * MASS * (pj.v - pi.v) / pj.rho * VISC_LAP * (H - r);
+
+				// ++stats.collisions_force;
 			}
 		}
 		Vector2f fgrav = G * MASS / pi.rho;
@@ -449,12 +466,16 @@ void sortParticles(void)
 static std::map<std::string, std::size_t> records;
 #define record_time(content) do { \
 	std::chrono::steady_clock::time_point begin;\
-	if (records.count(#content) == 0) \
+	if (records.count(#content) == 0) { \
 		records[#content] = 0;\
-	begin = std::chrono::steady_clock::now();\
+	}\
+	begin = std::chrono::steady_clock::now(); \
 	content; \
 	records[#content] += std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - begin).count(); \
 } while(0)
+
+#define get_time(content) (records[#content])
+#define get_steps(content) (records[#content "_steps"])
 
 static void report_time()
 {
@@ -465,10 +486,12 @@ static void report_time()
 
 void Update(void)
 {
+	int t0 = glutGet(GLUT_ELAPSED_TIME);
 	record_time(sortParticles());
 	record_time(parallel_call(ComputeDensityPressure));
 	record_time(parallel_call(ComputeForces));
 	record_time(parallel_call(Integrate));
+	stats.update_ms = glutGet(GLUT_ELAPSED_TIME) - t0;
 
 	glutPostRedisplay();
 }
@@ -477,7 +500,7 @@ void InitGL(void)
 {
 	glClearColor(0.9f, 0.9f, 0.9f, 1);
 	glEnable(GL_POINT_SMOOTH);
-	glPointSize(H / 8.f);
+	glPointSize(H / 10.f);
 	glMatrixMode(GL_PROJECTION);
 }
 
@@ -485,6 +508,7 @@ void Render(void)
 {
 	static unsigned frame;
 	static int t0, t1;
+	int t0_local = glutGet(GLUT_ELAPSED_TIME);
 
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -503,11 +527,17 @@ void Render(void)
 
 	frame++;
 	t1 = glutGet(GLUT_ELAPSED_TIME);
+	stats.render_ms = t1 - t0_local;
 
 	if (t1 - t0 > 1000) {
-		log_info_rewind(frame * 1000U / (t1 - t0) << " fps" << '\r');
+		log_info_rewind("num particles: " << particles.size() << "; "
+		                << frame * 1000U / (t1 - t0) << " fps; update = "
+						<< stats.update_ms << "ms; render = " << stats.render_ms << "ms; "
+						<< "average collisions(d,f): " << stats.collisions_density / frame << "," << stats.collisions_force / frame << "; "
+						<< "average match(d,f): " << stats.match_density / frame << "," << stats.match_force / frame << " ");
 	 	t0 = t1;
 		frame = 0;
+		stats.clear();
 	}
 }
 
