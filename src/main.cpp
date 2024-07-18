@@ -23,6 +23,9 @@ using namespace std;
 #include <eigen3/Eigen/Dense>
 using namespace Eigen;
 
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
+
 // "Particle-Based Fluid Simulation for Interactive Applications" by Müller et al.
 // solver parameters
 const static Vector2f G(0.f, -10.f);   // external (gravitational) forces
@@ -331,7 +334,7 @@ void InitSPH(void)
 	{
 		for (float x = VIEW_WIDTH / 4; x <= VIEW_WIDTH / 2; x += H)
 		{
-			if (particles.size() < DAM_PARTICLES)
+			if (likely(particles.size() < DAM_PARTICLES))
 			{
 				float jitter = static_cast<float>(arc4random()) / static_cast<float>(RAND_MAX);
 				particles.push_back(Particle(x + jitter, y));
@@ -357,22 +360,22 @@ void IntegrateWorker(const JobDescriptor *job)
 		p.x += DT * p.v;
 
 		// enforce boundary conditions
-		if (p.x(0) - EPS < 0.f)
+		if (unlikely(p.x(0) - EPS < 0.f))
 		{
 			p.v(0) *= BOUND_DAMPING;
 			p.x(0) = EPS;
 		}
-		if (p.x(0) + EPS > VIEW_WIDTH)
+		if (unlikely(p.x(0) + EPS > VIEW_WIDTH))
 		{
 			p.v(0) *= BOUND_DAMPING;
 			p.x(0) = VIEW_WIDTH - EPS;
 		}
-		if (p.x(1) - EPS < 0.f)
+		if (unlikely(p.x(1) - EPS < 0.f))
 		{
 			p.v(1) *= BOUND_DAMPING;
 			p.x(1) = EPS;
 		}
-		if (p.x(1) + EPS > VIEW_HEIGHT)
+		if (unlikely(p.x(1) + EPS > VIEW_HEIGHT))
 		{
 			p.v(1) *= BOUND_DAMPING;
 			p.x(1) = VIEW_HEIGHT - EPS;
@@ -392,9 +395,9 @@ void ComputeDensityPressureWorker(const JobDescriptor *job)
 		pi.rho = 0.f;
 
 		tmp.x = pi.x - Vector2f(H, 0);
-		auto lower = std::lower_bound(particles.begin(), particles.end(), tmp);
+		auto lower = std::lower_bound(particles.begin(), it, tmp);
 		tmp.x = pi.x + Vector2f(H, 0);
-		auto upper = std::upper_bound(particles.begin(), particles.end(), tmp);
+		auto upper = std::upper_bound(it, particles.end(), tmp);
 		// stats.match_density += std::distance(lower, upper);
 
 		for (auto jit = lower; jit != upper; ++jit)
@@ -427,15 +430,15 @@ void ComputeForcesWorker(const JobDescriptor *job)
 		Vector2f fvisc(0.f, 0.f);
 
 		tmp.x = pi.x - Vector2f(H, 0);
-		auto lower = std::lower_bound(particles.begin(), particles.end(), tmp);
+		auto lower = std::lower_bound(particles.begin(), it, tmp);
 		tmp.x = pi.x + Vector2f(H, 0);
-		auto upper = std::upper_bound(particles.begin(), particles.end(), tmp);
+		auto upper = std::upper_bound(it, particles.end(), tmp);
 		// stats.match_force += std::distance(lower, upper);
 
 		for (auto jit = lower; jit != upper; ++jit)
 		{
 			auto &pj = *jit;
-			if (&pi == &pj)
+			if (unlikely(&pi == &pj))
 			{
 				continue;
 			}
@@ -466,7 +469,7 @@ void sortParticles(void)
 static std::map<std::string, std::size_t> records;
 #define record_time(content) do { \
 	std::chrono::steady_clock::time_point begin;\
-	if (records.count(#content) == 0) { \
+	if (unlikely(records.count(#content) == 0)) { \
 		records[#content] = 0;\
 	}\
 	begin = std::chrono::steady_clock::now(); \
@@ -500,7 +503,7 @@ void InitGL(void)
 {
 	glClearColor(0.9f, 0.9f, 0.9f, 1);
 	glEnable(GL_POINT_SMOOTH);
-	glPointSize(H / 10.f);
+	glPointSize(H / 4.f);
 	glMatrixMode(GL_PROJECTION);
 }
 
@@ -529,7 +532,7 @@ void Render(void)
 	t1 = glutGet(GLUT_ELAPSED_TIME);
 	stats.render_ms = t1 - t0_local;
 
-	if (t1 - t0 > 1000) {
+	if (unlikely(t1 - t0 > 1000)) {
 		log_info_rewind("num particles: " << particles.size() << "; "
 		                << frame * 1000U / (t1 - t0) << " fps; update = "
 						<< stats.update_ms << "ms; render = " << stats.render_ms << "ms; "
